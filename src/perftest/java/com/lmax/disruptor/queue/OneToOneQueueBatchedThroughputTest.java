@@ -16,7 +16,7 @@
 package com.lmax.disruptor.queue;
 
 import com.lmax.disruptor.AbstractPerfTestQueue;
-import com.lmax.disruptor.support.ValueAdditionQueueProcessor;
+import com.lmax.disruptor.support.ValueAdditionBatchQueueProcessor;
 import com.lmax.disruptor.util.DaemonThreadFactory;
 
 import java.util.concurrent.*;
@@ -45,7 +45,7 @@ import static com.lmax.disruptor.support.PerfTestUtil.failIf;
  *
  * </pre>
  */
-public final class OneToOneQueueThroughputTest extends AbstractPerfTestQueue
+public final class OneToOneQueueBatchedThroughputTest extends AbstractPerfTestQueue
 {
     private static final int BUFFER_SIZE = 1024 * 64;
     private static final long ITERATIONS = 1000L * 1000L * 10L;
@@ -55,8 +55,8 @@ public final class OneToOneQueueThroughputTest extends AbstractPerfTestQueue
     ///////////////////////////////////////////////////////////////////////////////////////////////
 
     private final BlockingQueue<Long> blockingQueue = new LinkedBlockingQueue<Long>(BUFFER_SIZE);
-    private final ValueAdditionQueueProcessor queueProcessor =
-        new ValueAdditionQueueProcessor(blockingQueue, ITERATIONS - 1);
+    private final ValueAdditionBatchQueueProcessor queueProcessor =
+        new ValueAdditionBatchQueueProcessor(blockingQueue, ITERATIONS);
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -91,7 +91,7 @@ public final class OneToOneQueueThroughputTest extends AbstractPerfTestQueue
 
     public static void main(String[] args) throws Exception
     {
-        OneToOneQueueThroughputTest test = new OneToOneQueueThroughputTest();
+        OneToOneQueueBatchedThroughputTest test = new OneToOneQueueBatchedThroughputTest();
         test.testImplementations();
     }
 }

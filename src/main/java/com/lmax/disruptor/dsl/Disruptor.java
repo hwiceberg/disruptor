@@ -15,10 +15,6 @@
  */
 package com.lmax.disruptor.dsl;
 
-import java.util.concurrent.Executor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-
 import com.lmax.disruptor.BatchEventProcessor;
 import com.lmax.disruptor.EventFactory;
 import com.lmax.disruptor.EventHandler;
@@ -34,6 +30,11 @@ import com.lmax.disruptor.WaitStrategy;
 import com.lmax.disruptor.WorkHandler;
 import com.lmax.disruptor.WorkerPool;
 import com.lmax.disruptor.util.Util;
+
+import java.util.concurrent.Executor;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * A DSL-style API for setting up the disruptor pattern around a ring buffer
@@ -62,16 +63,20 @@ public class Disruptor<T>
     private final Executor executor;
     private final ConsumerRepository<T> consumerRepository = new ConsumerRepository<T>();
     private final AtomicBoolean started = new AtomicBoolean(false);
-    private ExceptionHandler<? super T> exceptionHandler;
+    private ExceptionHandler<? super T> exceptionHandler = new ExceptionHandlerWrapper<T>();
 
     /**
      * Create a new Disruptor. Will default to {@link com.lmax.disruptor.BlockingWaitStrategy} and
      * {@link ProducerType}.MULTI
      *
+     * @deprecated Use a {@link ThreadFactory} instead of an {@link Executor} as a the ThreadFactory
+     * is able to report errors then it is unable to construct a thread to run a producer.
+     *
      * @param eventFactory   the factory to create events in the ring buffer.
      * @param ringBufferSize the size of the ring buffer.
      * @param executor       an {@link Executor} to execute event processors.
      */
+    @Deprecated
     public Disruptor(final EventFactory<T> eventFactory, final int ringBufferSize, final Executor executor)
     {
         this(RingBuffer.createMultiProducer(eventFactory, ringBufferSize), executor);
@@ -80,12 +85,16 @@ public class Disruptor<T>
     /**
      * Create a new Disruptor.
      *
+     * @deprecated Use a {@link ThreadFactory} instead of an {@link Executor} as a the ThreadFactory
+     * is able to report errors then it is unable to construct a thread to run a producer.
+     *
      * @param eventFactory   the factory to create events in the ring buffer.
      * @param ringBufferSize the size of the ring buffer, must be power of 2.
      * @param executor       an {@link Executor} to execute event processors.
      * @param producerType   the claim strategy to use for the ring buffer.
      * @param waitStrategy   the wait strategy to use for the ring buffer.
      */
+    @Deprecated
     public Disruptor(
         final EventFactory<T> eventFactory,
         final int ringBufferSize,
@@ -93,9 +102,41 @@ public class Disruptor<T>
         final ProducerType producerType,
         final WaitStrategy waitStrategy)
     {
-        this(
-            RingBuffer.create(producerType, eventFactory, ringBufferSize, waitStrategy),
-            executor);
+        this(RingBuffer.create(producerType, eventFactory, ringBufferSize, waitStrategy), executor);
+    }
+
+    /**
+     * Create a new Disruptor. Will default to {@link com.lmax.disruptor.BlockingWaitStrategy} and
+     * {@link ProducerType}.MULTI
+     *
+     * @param eventFactory   the factory to create events in the ring buffer.
+     * @param ringBufferSize the size of the ring buffer.
+     * @param threadFactory  a {@link ThreadFactory} to create threads to for processors.
+     */
+    public Disruptor(final EventFactory<T> eventFactory, final int ringBufferSize, final ThreadFactory threadFactory)
+    {
+        this(RingBuffer.createMultiProducer(eventFactory, ringBufferSize), new BasicExecutor(threadFactory));
+    }
+
+    /**
+     * Create a new Disruptor.
+     *
+     * @param eventFactory   the factory to create events in the ring buffer.
+     * @param ringBufferSize the size of the ring buffer, must be power of 2.
+     * @param threadFactory  a {@link ThreadFactory} to create threads for processors.
+     * @param producerType   the claim strategy to use for the ring buffer.
+     * @param waitStrategy   the wait strategy to use for the ring buffer.
+     */
+    public Disruptor(
+            final EventFactory<T> eventFactory,
+            final int ringBufferSize,
+            final ThreadFactory threadFactory,
+            final ProducerType producerType,
+            final WaitStrategy waitStrategy)
+    {
+        this(RingBuffer.create(
+                               producerType, eventFactory, ringBufferSize, waitStrategy),
+                new BasicExecutor(threadFactory));
     }
 
     /**
@@ -187,10 +228,29 @@ public class Disruptor<T>
      * <p>Note that only event handlers set up after calling this method will use the exception handler.</p>
      *
      * @param exceptionHandler the exception handler to use for any future {@link EventProcessor}.
+     * @deprecated This method only applies to future event handlers. Use setDefaultExceptionHandler instead which applies to existing and new event handlers.
      */
     public void handleExceptionsWith(final ExceptionHandler<? super T> exceptionHandler)
     {
         this.exceptionHandler = exceptionHandler;
+    }
+
+    /**
+     * <p>Specify an exception handler to be used for event handlers and worker pools created by this Disruptor.</p>
+     * <p>
+     * <p>The exception handler will be used by existing and future event handlers and worker pools created by this Disruptor instance.</p>
+     *
+     * @param exceptionHandler the exception handler to use.
+     */
+    @SuppressWarnings("unchecked")
+    public void setDefaultExceptionHandler(final ExceptionHandler<? super T> exceptionHandler)
+    {
+        checkNotStarted();
+        if (!(this.exceptionHandler instanceof ExceptionHandlerWrapper))
+        {
+            throw new IllegalStateException("setDefaultExceptionHandler can not be used after handleExceptionsWith");
+        }
+        ((ExceptionHandlerWrapper<T>)this.exceptionHandler).switchTo(exceptionHandler);
     }
 
     /**
